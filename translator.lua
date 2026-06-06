@@ -3,163 +3,556 @@ local CONFIG = {
     NOTIFICATION_DURATION = 3,
     GUI_SCAN_DELAY = 0.02,
     BATCH_PROCESS_SIZE = 50,
-    API_URL = "https://uapis.cn/api/v1/translate/text",
-    TARGET_LANG = "zh",
-    API_TIMEOUT = 12,
+    -- AI API 配置
+    API_URL = "https://uapis.cn/api/v1/ai/translate",
+    TARGET_LANG = "zh",          -- 目标语言：简体中文
+    STYLE = "casual",            -- 随意口语化
+    CONTEXT = "entertainment",   -- 娱乐场景
+    PRESERVE_FORMAT = true,
+    API_TIMEOUT = 5,
     API_RETRY_DELAY = 1,
-    MAX_CONCURRENT_REQUESTS = 3,
-    CACHE_FILE = "Qcumber_translate_cache.json",
-    SHOW_PROGRESS = true,
-    PROGRESS_POSITION = UDim2.new(0.5, -200, 0.85, 0)
+    MAX_CONCURRENT_REQUESTS = 3
 }
 
+-- 必要服务
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 
+if not HttpService then
+    warn("HttpService 不可用，将仅使用本地字典翻译")
+end
+
 local LocalPlayer = Players.LocalPlayer
 
--- ========== 本地字典（请粘贴完整） ==========
+-- ========== 本地字典（快速缓存） ==========
 local Translations = {
+    -- 请将用户提供的完整 Translations 表粘贴在此处（原脚本中的字典）
+    -- 为节省篇幅，此处仅作占位，实际使用时务必复制原字典所有条目
+    ["General"] = "主页",
+    ["Player"] = "玩家",
+    ["Lock"] = "锁定",
+    ["unlock"] = "解锁",
+    ["Exploits"] = "漏洞",
+    ["Visuals"] = "视觉",
+    ["Floor"] = "楼层",
+    ["Fun"] = "娱乐",
+    ["Auto Rooms"] = "自动rooms",
+    ["Play Walking"] = "行走路径",
+    ["Notify Anchor Code"] = "通知锚点代码",
+    ["Remove Figure (FE)"] = "移除Figure(FE)",
+    ["Anti Bridge Fall"] = "防止桥梁坠落",
+    ["Show Seek Path"] = "显示Seek路径",
+    ["Anticheat Bypass"] = "绕过反作弊",
+    ["Fuse"] = "保险丝",
+    ["Recommended Speed 45-50，No Enable"] = "推荐速度在45-40，不要启用",
+    ["Configuration"] = "配置",
+    ["Addons"] = "插件",
+    ["Keybinds"] = "按键",
+    ["Anti Features"] = "反制功能",
+    ["Anti-AFK"] = "反挂机检测",
+    ["Anti-Lag"] = "低画质模式",
+    ["Anti-Cutscenes"] = "跳过过场动画",
+    ["Door Reach Range"] = "开门范围调节",
+    ["Anti-Heartbeat-Minigame"] = "跳过心跳小游戏",
+    ["Anti-Dread"] = "反Dread实体",
+    ["Anti-Screech"] = "反Screech实体",
+    ["Anti-A90"] = "反A-90实体",
+    ["Anti-Eyes"] = "反Eyes实体",
+    ["Anti-Snare"] = "反地刺实体",
+    ["Anti-Blur"] = "反模糊效果",
+    ["Anti-Dupe"] = "反假门",
+    ["Anti-Figure-Hearing"] = "反Figure听觉",
+    ["Anti-Halt"] = "反Halt实体",
+    ["Infinite Items"] = "无限物品",
+    ["Infinite Crucifixs"] = "无限十字架",
+    ["Infinite Lockpicks / SkeletonKey"] = "无限开锁工具/骷髅钥匙",
+    ["Infinite Shears"] = "无限剪刀",
+    ["Bypass"] = "绕过",
+    ["Speed Bypass Method"] = "速度绕过方法",
+    ["Method 1"] = "方法1",
+    ["Method 2"] = "方法2",
+    ["Speed Bypass"] = "速度绕过",
+    ["Speed Bypass Interval"] = "速度绕过间隔",
+    ["Godmode Dropdown"] = "上帝模式菜单",
+    ["Toggle"] = "切换",
+    ["Godmode Range"] = "无敌启用范围",
+    ["God Mode"] = "无敌模式",
+    ["Anti Cheat Manipulation Speed"] = "无拉回穿墙速度",
+    ["Anti Cheat Manipulation"] = "无拉回穿墙",
+    ["Use Tools Anywhere"] = "随处使用工具",
+    ["Troll"] = "恶搞",
+    ["Remove Doors (FE)"] = "移除门(FE)",
+    ["Notify"] = "通知",
+    ["Notify Oxygen"] = "氧气通知",
+    ["Client Sided Entities"] = "生成实体（无伤害）",
+    ["Spawn Dread"] = "生成恐惧实体",
+    ["Spawn A90"] = "生成A-90实体",
+    ["Spawn Screech"] = "生成Screech实体",
+    ["Spawn Giltch"] = "生成Glitch实体",
+    ["Get Items"] = "获取物品",
+    ["Crucifix Made By PenguinManiack"] = "十字架由PenguinManiack制作",
+    ["Press Q To Activate the Crucifix"] = "按Q激活十字架",
+    ["Crucifix Fails"] = "十字架失效",
+    ["Crucifix Uses"] = "十字架使用",
+    ["spawn Glitch"] = "生成Glitch",
+    ["Crucifix Range"] = "十字架范围",
+    ["Crucifix Anything"] = "封印任何物品",
+    ["Crucifix Falls"] = "十字架掉落",
+    ["Get Crucifix"] = "获取十字架",
+    ["Get Keyboard Script"] = "启用键盘脚本",
+    ["Themes"] = "主题",
+    ["Background color"] = "背景颜色",
+    ["Main color"] = "主颜色",
+    ["Accent color"] = "强调色",
+    ["Outline color"] = "轮廓颜色",
+    ["Font color"] = "字体颜色",
+    ["Font Face"] = "字体",
+    ["Theme list"] = "主题列表",
+    ["Default"] = "默认",
+    ["Set as default"] = "设为默认",
+    ["Custom theme name"] = "自定义主题名称",
+    ["Create theme"] = "创建主题",
+    ["Custom themes"] = "自定义主题",
+    ["Load theme"] = "加载主题",
+    ["Overwrite theme"] = "覆盖主题",
+    ["Delete theme"] = "删除主题",
+    ["Refresh list"] = "刷新列表",
+    ["Reset default"] = "重置默认",
+    ["Config name"] = "配置名称",
+    ["Create config"] = "创建配置",
+    ["Config list"] = "配置列表",
+    ["Load config"] = "加载配置",
+    ["Overwrite config"] = "覆盖配置",
+    ["Delete config"] = "删除配置",
+    ["Set as autoload"] = "设为自动加载",
+    ["Reset autoload"] = "重置自动加载",
+    ["Current autoload config"] = "当前自动加载配置",
+    ["Speed Boost Slider"] = "速度增强滑块",
+    ["Speed Boost"] = "速度增强",
+    ["No clip"] = "穿墙模式",
+    ["Enable Jump"] = "启用跳跃",
+    ["Infinite Jump"] = "无限跳跃",
+    ["Instant Interacts"] = "瞬间互动",
+    ["No Acceleration"] = "无加速度",
+    ["No Closet Exit Delay"] = "无柜子退出延迟",
+    ["Fly Speed"] = "飞行速度",
+    ["Fly"] = "飞行",
+    ["Buttons"] = "按钮",
+    ["Reset"] = "自我了结",
+    ["Play again"] = "再玩一次",
+    ["Lobby"] = "返回大厅",
+    ["Revive"] = "使用复活",
+    ["No Footer"] = "Qcumber100汉化",
+    ["Automation"] = "自动化",
+    ["Auto Interact"] = "自动互动",
+    ["Ignore List"] = "忽略列表",
+    ["Jeff Items"] = "Jeff物品",
+    ["Auto Interact Interval"] = "自动互动间隔",
+    ["Auto Painting"] = "自动画房",
+    ["Auto Get Glitch Fragment"] = "自动获取故障碎片",
+    ["Unlock Padlock Distance"] = "解锁挂锁距离",
+    ["Auto Library Code"] = "自动图书馆代码",
+    ["Notify Library Code"] = "通知图书馆代码",
+    ["Bruteforce Library Code"] = "暴力破解图书馆代码",
+    ["Works with only 3 digits or less"] = "暴力解锁仅适用于3位或更少数字",
+    ["Ignore Candys"] = "忽略糖果",
+    ["Auto Eat Candys"] = "自动吃糖果",
+    ["Auto Breaker Box"] = "自动断路器箱",
+    ["Auto Closet"] = "自动躲柜子",
+    ["Auto Spam Jack"] = "自动刷Jack",
+    ["Prompt Clip"] = "隔墙互动",
+    ["Prompt Reach"] = "互动范围",
+    ["Menu"] = "菜单",
+    ["Open Keybind Menu"] = "打开按键绑定菜单",
+    ["Play Sound"] = "播放声音",
+    ["Notification Side"] = "通知位置",
+    ["Right"] = "右侧",
+    ["you don't have enough"] = "你没有足够的",
+    ["Custom Cursor"] = "自定义光标",
+    ["DPI Scale"] = "DPI缩放",
+    ["Menu bind"] = "菜单绑定",
+    ["Unload GUI"] = "卸载GUI",
+    ["Upload GUI"] = "上传GUI",
+    ["Settings"] = "设置",
+    ["Enable Show Distances"] = "启用显示距离",
+    ["Enable Tracers"] = "启用追踪器",
+    ["Transparent"] = "透明度",
+    ["Transparency Slider"] = "透明度滑块",
+    ["Transparency Closet"] = "储物柜透明度",
+    ["Transparency Cart"] = "手推车透明度",
+    ["Entities"] = "实体",
+    ["Entity Notifys"] = "实体通知",
+    ["Key"] = "钥匙",
+    ["Closet"] = "储物柜",
+    ["Gate Lever"] = "门闸杠杆",
+    ["Players"] = "玩家",
+    ["Books"] = "书籍",
+    ["Breaker"] = "断路器",
+    ["Items"] = "物品",
+    ["Gold"] = "黄金",
+    ["Camera"] = "相机",
+    ["No Camera Shake"] = "无相机抖动",
+    ["Witnessed's Offset"] = "观察者偏移",
+    ["Viewmodel Offset"] = "视图模型偏移",
+    ["Third Person"] = "第三人称",
+    ["Spectate Entity"] = "观察实体",
+    ["FOV Slider"] = "视野滑块",
+    ["FOV"] = "视野",
+    ["Ambient"] = "环境光",
+    ["Fullbright"] = "全亮",
+    ["Anti Fog"] = "反雾效",
+    ["Entites Bypass"] = "实体绕过",
+    ["Anti Nanner Banana"] = "防止踩香蕉",
+    ["Anti Seek-Obstructions"] = "反Seek障碍物",
+    ["Modifiers"] = "修改器",
+    ["Death Farm"] = "死亡农场",
+    ["Anti Lookman"] = "反Lookman",
+    ["Anti Giggle"] = "反Giggle",
+    ["Anti Jamming"] = "反Jamming",
+    ["Anti Gloom Egg"] = "反Gloom蛋",
+    ["Anti Vacuum"] = "反真空门",
+    ["ESP"] = "增强视觉",
+    ["Timer Lever"] = "计时器杠杆",
+    ["Search"] = "搜索",
+    ["Programmer"] = "程序员",
+    ["Join msdoors Discord"] = "加入msdoors Discord",
+    ["Legend"] = "图例",
+    ["Notes"] = "备注",
+    ["Less Value More Freeze when opening door but faster processing things"] = "数值越小开门时冻结越多但处理速度更快",
+    ["Join Discord"] = "加入Discord",
+    ["Godmode Dropdown"] = "上帝模式下拉菜单",
+    ["Chest"] = "箱子",
+    ["Vine"] = "藤蔓",
+    ["Lighter"] = "打火机",
+    ["Flashlight"] = "手电筒",
+    ["Vitamins"] = "维他命",
+    ["Crucifix"] = "十字架",
+    ["Skeleton Key"] = "骷髅钥匙",
+    ["Gummy Flashlight"] = "手摇手电筒",
+    ["Candle"] = "蜡烛",
+    ["Moonlight Candle"] = "月光蜡烛",
+    ["Star Vial"] = "星光小瓶",
+    ["Star Bottle"] = "星光瓶",
+    ["Star Jug"] = "星光桶",
+    ["Laser Pointer"] = "激光笔",
+    ["Battery Pack"] = "电池包",
+    ["Bandage Pack"] = "绷带包",
+    ["Shears"] = "剪刀",
+    ["Toolshed"] = "工具棚",
+    ["Glowstick"] = "荧光棒",
+    ["Spotlight"] = "大灯",
+    ["Straplight"] = "肩灯",
+    ["Dumpster"] = "垃圾桶",
+    ["Alarm Clock"] = "闹钟",
+    ["Smoohie"] = "啤酒",
+    ["Moonlight Smoohie"] = "月光啤酒",
+    ["Gween Soda"] = "绿色汽水",
+    ["Bread"] = "面包",
+    ["Cheese"] = "奶酪",
+    ["Donut"] = "甜甜圈",
+    ["Aloe"] = "芦荟",
+    ["Compass"] = "罗盘",
+    ["Lantern"] = "灯笼",
+    ["Lotus Petal"] = "莲花",
+    ["Iron Key"] = "铁钥匙",
+    ["Multi Tool"] = "多功能工具",
+    ["Tip Jar"] = "小费罐",
+    ["Rift Jar"] = "裂隙罐",
+    ["Puzzle Painting"] = "拼图画",
+    ["Library Paper"] = "密码纸",
+    ["Breaker"] = "断路器",
+    ["Generator Fuse"] = "保险丝",
+    ["Lotus Petal"] = "花瓣",
+    ["Battery"] = "电池",
+    ["Bandage"] = "绷带",
+    ["Glitch Fragment"] = "故障碎片",
+    ["Lever"] = "拉杆",
+    ["Time Lever"] = "计时器杆",
+    ["Star Dust"] = "星尘",
+    ["Generator"] = "发电机",
+    ["Door Key"] = "门钥匙",
+    ["Anchor"] = "锚点",
+    ["Book"] = "书",
+    ["Electrical Key"] = "配电室钥匙",
+    ["Gate"] = "大门",
+    ["Button"] = "按钮",
+    ["Water Pump"] = "水阀",
+    ["Pipe"] = "水管",
+    ["Bed"] = "床",
+    ["Double Bed"] = "双人床",
+    ["Closet"] = "衣柜",
+    ["Locker"] = "铁柜",
+    ["Mouse Hole"] = "老鼠洞",
+    ["Item Locker"] = "物品柜",
+    ["Herb of Viridis"] = "药草",
+    ["Gold"] = "黄金",
+    ["Stardust Pile"] = "星尘",
+    ["Vacuum"] = "虚空",
+    ["THE EVIL KEY"] = "邪恶的钥匙",
+    ["Hole"] = "洞",
+    ["Snare"] = "陷阱",
+    ["Ladder"] = "梯子",
+    ["Toolbox"] = "工具箱",
+    ["Fridge Locker"] = "冰箱柜",
+    ["Vine Lever"] = "藤蔓断头台",
+    ["Vial of Starlight"] = "星光小瓶",
+    ["Bottle of Starlight"] = "星光瓶",
+    ["Barrel of Starlight"] = "星光桶",
+    ["Win Shield"] = "胜利护盾",
+    ["Big Shield Potion"] = "大护盾药水",
+    ["Small Shield Potion"] = "小护盾药水",
+    ["Holy Hand Grenade"] = "神圣手雷",
+    ["Max Players"] = "最大玩家数量",
+    ["Modifiers"] = "修饰符",
+    ["Destination"] = "目的地",
+    ["Friends Only"] = "仅限好友",
+    ["Create Elevator"] = "创建电梯",
+    ["Import from Game UI"] = "从游戏UI导入",
+    ["Damage"] = "伤害",
+    ["Elevator name"] = "电梯名称",
+    ["Create elevator"] = "创建电梯",
+    ["Saved elevators"] = "已保存的电梯",
+    ["Load elevator"] = "载入电梯",
+    ["Overwrite elevator"] = "覆盖电梯",
+    ["Delete elevator"] = "删除电梯",
+    ["Auto Join Elevator"] = "自动加入电梯",
+    ["Redeem all Codes"] = "兑换所有代码",
+    ["Rejoin Server"] = "重新加入服务器",
+    ["Cycle Delay"] = "周期延迟",
+    ["Cycle Achievements"] = "循环成就",
+    ["Pivot"] = "鬼步法",
+    ["Velocity"] = "直穿法",
+    ["Infinite"] = "无限",
+    ["Item List"] = "物品列表",
+    ["Lockpick"] = "撬锁器",
+    ["Skeleton Key"] = "骷髅钥匙",
+    ["Shears"] = "剪刀",
+    ["Toolbox"] = "工具箱",
+    ["Toolshed"] = "工具棚",
+    ["Multitool"] = "多功能工具",
+    ["Door"] = "门",
+    ["Doors"] = "门",
+    ["Noclip"] = "启用穿墙",
+    ["has spawned"] = "已生成",
+    ["Automatically Enabled Anti-Figure Hearing Needs to enable for godmode to work"] = "启用“反Figure听觉”才能使上帝模式生效！",
+    ["side"] = "尺寸",
+    ["This painting is titled"] = "这幅画标题为",
+    ["avoid looking at it"] = "避免直视它",
+    ["Creation on an Android 6 USB and app"] = "在Android 6 USB和设备上创建",
+    ["Failed to load autoload config"] = "加载自动配置失败",
+    ["Delay added"] = "添加延迟",
+    ["Loaded in"] = "耗时",
+    ["Door Reach"] = "开门范围",
+    ["Are you sure"] = "你确定",
+    ["Oxygen GUI Side Position"] = "氧气通知位置大小",
+    ["CONFIRM"] = "继续",
+    ["PRE-RUN SHOP"] = "准备商店",
+    ["skip the key"] = "我，无“锁”不能！",
+    ["temporarily boosts speed"] = "话说为什么一瓶药只能吃一口",
+    ["Batteries included"] = "照亮你的美。",
+    ["Basic temporary light source"] = "普通打火机，貌似可以点燃些东西",
+    ["5X KNOBS BOOST"] = "5X 门把手（真有人买吗）",
+    ["LASTS ONE FLOOR. ADDS 500% MULTIPLIER TO KNOBS"] = "不要99，不要88，只要49，五倍门把手带回家！",
+    ["Shortcuts & easy loot"] = "剪！剪！剪！",
+    ["It works here!"] = "十字架，横扫户外，做回自己！",
+    ["Quietness"] = "Qcumber100汉化",
+    ["HOLD"] = "长按",
+    ["Reach"] = "互动",
+    ["Ignore"] = "忽略",
+    ["This is what a notification will look like."] = "通知就长这样。",
 }
 
--- ========== 中文检测函数（核心新增） ==========
-local function isChinese(text)
-    if not text or text == "" then return false end
-    -- 检测中文字符的 UTF-8 编码范围
-    -- 常用汉字范围：0x4E00-0x9FFF (E4 B8 80 到 E9 BF BF)
-    return text:match("[\228-\234][\128-\191][\128-\191]") ~= nil
-end
-
--- ========== 磁盘缓存支持 ==========
-local function supportsFileIO()
-    return pcall(function() return writefile and readfile end)
-end
-
-local function loadCacheFromFile()
-    if not supportsFileIO() then return {} end
-    local success, data = pcall(function()
-        return readfile(CONFIG.CACHE_FILE)
-    end)
-    if not success or not data or data == "" then
-        return {}
-    end
-    local decoded = HttpService:JSONDecode(data)
-    if type(decoded) == "table" then
-        return decoded
-    else
-        return {}
-    end
-end
-
-local function saveCacheToFile(cacheTable)
-    if not supportsFileIO() then return false end
-    local success, json = pcall(function()
-        return HttpService:JSONEncode(cacheTable)
-    end)
-    if not success then return false end
-    pcall(function()
-        writefile(CONFIG.CACHE_FILE, json)
-    end)
-    return true
-end
-
--- ========== 全局缓存 ==========
-local ApiCache = loadCacheFromFile()
-local PendingRequests = {}
-local RequestQueue = {}
+-- ========== AI 翻译缓存和队列管理 ==========
+local ApiCache = {}          -- 原文 -> 译文
+local PendingRequests = {}   -- 原文 -> {回调函数列表}
+local RequestQueue = {}      -- 待发送请求队列
 local ActiveRequests = 0
 local RequestTimer = nil
-local TranslatedObjects = setmetatable({}, {__mode = "k"})
 
-local function addToCache(original, translated)
-    if not original or not translated then return end
-    ApiCache[original] = translated
-    task.spawn(function()
-        saveCacheToFile(ApiCache)
-    end)
+-- 辅助函数：延迟
+local function wait(seconds)
+    local start = os.clock()
+    repeat task.wait() until os.clock() - start >= seconds
 end
 
--- ========== 进度条相关 ==========
-local progressGui = nil
-local progressText = nil
-local progressBar = nil
-
-local function createProgressBar()
-    if not CONFIG.SHOW_PROGRESS then return end
-    pcall(function()
-        progressGui = Instance.new("ScreenGui")
-        progressGui.Name = "TranslationProgress"
-        progressGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        progressGui.Parent = CoreGui
-        progressGui.ResetOnSpawn = false
-
-        local mainFrame = Instance.new("Frame")
-        mainFrame.Size = UDim2.new(0, 400, 0, 60)
-        mainFrame.Position = CONFIG.PROGRESS_POSITION
-        mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-        mainFrame.BorderColor3 = Color3.new(0.3, 0.3, 0.3)
-        mainFrame.BorderSizePixel = 2
-        mainFrame.Parent = progressGui
-
-        progressText = Instance.new("TextLabel")
-        progressText.Size = UDim2.new(1, 0, 0.4, 0)
-        progressText.Position = UDim2.new(0, 0, 0, 0)
-        progressText.BackgroundTransparency = 1
-        progressText.Text = "初始化翻译引擎..."
-        progressText.TextColor3 = Color3.new(1, 1, 1)
-        progressText.TextScaled = true
-        progressText.Parent = mainFrame
-
-        local barBg = Instance.new("Frame")
-        barBg.Size = UDim2.new(0.9, 0, 0.3, 0)
-        barBg.Position = UDim2.new(0.05, 0, 0.55, 0)
-        barBg.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-        barBg.BorderSizePixel = 0
-        barBg.Parent = mainFrame
-
-        progressBar = Instance.new("Frame")
-        progressBar.Size = UDim2.new(0, 0, 1, 0)
-        progressBar.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2)
-        progressBar.BorderSizePixel = 0
-        progressBar.Parent = barBg
+-- 调用 AI 翻译 API (异步)
+local function callAITranslateAPI(text, callback)
+    local requestBody = {
+        text = text,
+        source_lang = "auto",      -- 自动检测源语言
+        target_lang = CONFIG.TARGET_LANG,
+        style = CONFIG.STYLE,
+        context = CONFIG.CONTEXT,
+        preserve_format = CONFIG.PRESERVE_FORMAT
+    }
+    local jsonBody = HttpService:JSONEncode(requestBody)
+    
+    local headers = {
+        ["Content-Type"] = "application/json"
+        -- 注意：此 API 当前文档未要求 api key，若实际需要请自行添加 Authorization 头
+    }
+    
+    local success, result = pcall(function()
+        return HttpService:RequestAsync({
+            Url = CONFIG.API_URL,
+            Method = "POST",
+            Headers = headers,
+            Body = jsonBody,
+            Timeout = CONFIG.API_TIMEOUT
+        })
     end)
-end
-
-local function updateProgress(text, percent)
-    if not progressGui then return end
-    pcall(function()
-        if progressText then progressText.Text = text end
-        if progressBar then
-            progressBar.Size = UDim2.new(math.clamp(percent, 0, 1), 0, 1, 0)
+    
+    if not success then
+        warn("AI API 请求失败: ", result)
+        callback(nil, "Network error")
+        return
+    end
+    
+    local response = result
+    if response.Success and response.StatusCode == 200 then
+        local decoded = HttpService:JSONDecode(response.Body)
+        if decoded and decoded.data and decoded.data.translated_text then
+            callback(decoded.data.translated_text, nil)
+            return
+        else
+            warn("AI API 返回格式错误: ", response.Body)
+            callback(nil, "Invalid response")
         end
-    end)
-end
-
-local function destroyProgressBar()
-    if progressGui then
-        pcall(function() progressGui:Destroy() end)
-        progressGui = nil
+    else
+        warn("AI API 错误状态码: ", response.StatusCode, " Body: ", response.Body)
+        callback(nil, "HTTP " .. tostring(response.StatusCode))
     end
 end
 
--- ========== UI 更新函数 ==========
+-- 处理队列中的下一个请求
+local function processRequestQueue()
+    if not RequestTimer then
+        RequestTimer = task.spawn(function()
+            while #RequestQueue > 0 and ActiveRequests < CONFIG.MAX_CONCURRENT_REQUESTS do
+                local nextRequest = table.remove(RequestQueue, 1)
+                if nextRequest then
+                    ActiveRequests = ActiveRequests + 1
+                    callAITranslateAPI(nextRequest.text, function(translated, err)
+                        ActiveRequests = ActiveRequests - 1
+                        if translated then
+                            ApiCache[nextRequest.text] = translated
+                            if PendingRequests[nextRequest.text] then
+                                for _, cb in ipairs(PendingRequests[nextRequest.text]) do
+                                    cb(translated)
+                                end
+                                PendingRequests[nextRequest.text] = nil
+                            end
+                            -- 更新所有匹配该原文的 UI 控件
+                            task.spawn(function()
+                                updateAllUIForText(nextRequest.text, translated)
+                            end)
+                        else
+                            warn("AI 翻译失败: ", nextRequest.text, " 原因: ", err)
+                            if PendingRequests[nextRequest.text] then
+                                for _, cb in ipairs(PendingRequests[nextRequest.text]) do
+                                    cb(nil)
+                                end
+                                PendingRequests[nextRequest.text] = nil
+                            end
+                        end
+                    end)
+                end
+                if ActiveRequests >= CONFIG.MAX_CONCURRENT_REQUESTS then
+                    break
+                end
+                task.wait(0.05)
+            end
+            RequestTimer = nil
+            if #RequestQueue > 0 then
+                processRequestQueue()
+            end
+        end)
+    end
+end
+
+-- 发起异步 AI 翻译请求
+local function requestTranslate(text, callback)
+    if not text or text == "" then
+        if callback then callback(nil) end
+        return
+    end
+    -- 查缓存
+    if ApiCache[text] then
+        if callback then callback(ApiCache[text]) end
+        return
+    end
+    -- 已有 pending
+    if PendingRequests[text] then
+        if callback then table.insert(PendingRequests[text], callback) end
+        return
+    end
+    PendingRequests[text] = callback and {callback} or {}
+    table.insert(RequestQueue, {text = text})
+    processRequestQueue()
+end
+
+-- 同步翻译函数（优先本地字典，其次 AI 缓存，否则返回原文并触发后台 AI 翻译）
+local function translateText(text)
+    if not text or type(text) ~= "string" or text == "" then
+        return text
+    end
+    
+    local processedText = text:gsub("^%s+", ""):gsub("%s+$", "")
+    
+    -- 1. 精确匹配本地字典
+    for en, cn in pairs(Translations) do
+        if processedText == en or processedText == en .. ":" then
+            return cn
+        end
+    end
+    
+    -- 2. 部分匹配本地字典（单词/短语包含）
+    for en, cn in pairs(Translations) do
+        if processedText:lower():find(en:lower(), 1, true) then
+            local escaped = en:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
+            local result = processedText:gsub(escaped, cn, 1)
+            if result ~= processedText then
+                return result
+            end
+        end
+    end
+    
+    -- 3. 检查 AI 缓存
+    if ApiCache[processedText] then
+        return ApiCache[processedText]
+    end
+    
+    -- 4. 未命中任何缓存，发起后台 AI 翻译请求，同时返回原文
+    requestTranslate(processedText, function(translated)
+        if translated then
+            -- 译文会自动更新界面
+        end
+    end)
+    
+    return text  -- 暂时显示原文
+end
+
+-- 更新所有具有特定原文的 UI 元素
 local function updateAllUIForText(originalText, translatedText)
     if not originalText or not translatedText then return end
-    local containers = { CoreGui }
+    local containers = {CoreGui}
     local success, playerGui = pcall(function() return LocalPlayer.PlayerGui end)
     if success then table.insert(containers, playerGui) end
     pcall(function() table.insert(containers, StarterGui) end)
-
+    
     for _, container in ipairs(containers) do
         if container then
-            for _, obj in ipairs(container:GetDescendants()) do
+            local descendants = container:GetDescendants()
+            for _, obj in ipairs(descendants) do
                 if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
                     if obj.Text == originalText then
                         obj.Text = translatedText
-                        TranslatedObjects[obj] = true
+                        if not TranslatedObjects[obj] then
+                            TranslatedObjects[obj] = true
+                        end
                     end
                 end
             end
@@ -167,142 +560,12 @@ local function updateAllUIForText(originalText, translatedText)
     end
 end
 
--- ========== API 请求与队列 ==========
-local function callTranslateAPI(text, callback)
-    -- 额外安全：如果真的传入了中文，不请求 API
-    if isChinese(text) then
-        callback(text, nil)
-        return
-    end
-    
-    local requestBody = { text = text }
-    local jsonBody = HttpService:JSONEncode(requestBody)
+-- 缓存已翻译对象
+local TranslatedObjects = setmetatable({}, {__mode = "k"})
 
-    local success, result = pcall(function()
-        return HttpService:RequestAsync({
-            Url = CONFIG.API_URL .. "?to_lang=" .. CONFIG.TARGET_LANG,
-            Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body = jsonBody,
-            Timeout = CONFIG.API_TIMEOUT
-        })
-    end)
-
-    if not success then
-        warn("API 请求失败: ", result)
-        callback(nil, "Network error")
-        return
-    end
-
-    local response = result
-    if response.Success and response.StatusCode == 200 then
-        local decoded = HttpService:JSONDecode(response.Body)
-        if decoded and decoded.translate then
-            callback(decoded.translate, nil)
-            return
-        else
-            warn("API 返回缺少 'translate' 字段: ", response.Body)
-            callback(nil, "Invalid response")
-        end
-    else
-        warn("API 错误状态码: ", response.StatusCode, " Body: ", response.Body)
-        callback(nil, "HTTP " .. tostring(response.StatusCode))
-    end
-end
-
-local function processRequestQueue()
-    if RequestTimer then return end
-    RequestTimer = task.spawn(function()
-        while #RequestQueue > 0 and ActiveRequests < CONFIG.MAX_CONCURRENT_REQUESTS do
-            local nextRequest = table.remove(RequestQueue, 1)
-            if nextRequest then
-                ActiveRequests = ActiveRequests + 1
-                callTranslateAPI(nextRequest.text, function(translated, err)
-                    ActiveRequests = ActiveRequests - 1
-                    if translated and translated ~= nextRequest.text then
-                        addToCache(nextRequest.text, translated)
-                        if PendingRequests[nextRequest.text] then
-                            for _, cb in ipairs(PendingRequests[nextRequest.text]) do
-                                cb(translated)
-                            end
-                            PendingRequests[nextRequest.text] = nil
-                        end
-                        task.spawn(function()
-                            updateAllUIForText(nextRequest.text, translated)
-                        end)
-                    else
-                        if PendingRequests[nextRequest.text] then
-                            for _, cb in ipairs(PendingRequests[nextRequest.text]) do
-                                cb(nil)
-                            end
-                            PendingRequests[nextRequest.text] = nil
-                        end
-                    end
-                end)
-            end
-            if ActiveRequests >= CONFIG.MAX_CONCURRENT_REQUESTS then break end
-            task.wait(0.05)
-        end
-        RequestTimer = nil
-        if #RequestQueue > 0 then processRequestQueue() end
-    end)
-end
-
-local function requestTranslate(text, callback)
-    if not text or text == "" then
-        if callback then callback(nil) end
-        return
-    end
-    -- 如果是中文，不发起请求
-    if isChinese(text) then
-        if callback then callback(text) end
-        return
-    end
-    if ApiCache[text] then
-        if callback then callback(ApiCache[text]) end
-        return
-    end
-    if PendingRequests[text] then
-        if callback then table.insert(PendingRequests[text], callback) end
-        return
-    end
-    PendingRequests[text] = callback and {callback} or {}
-    table.insert(RequestQueue, { text = text })
-    processRequestQueue()
-end
-
--- ========== 核心翻译函数（带中文检测） ==========
-local function translateText(text)
-    if not text or type(text) ~= "string" or text == "" then
-        return text
-    end
-    local processedText = text:gsub("^%s+", ""):gsub("%s+$", "")
-    
-    -- 【关键】如果已经是中文，直接返回原文，不进行任何翻译
-    if isChinese(processedText) then
-        return text
-    end
-
-    -- 1. 本地字典精确匹配
-    for en, cn in pairs(Translations) do
-        if processedText == en or processedText == en .. ":" then
-            return cn
-        end
-    end
-
-    -- 2. API 缓存
-    if ApiCache[processedText] then
-        return ApiCache[processedText]
-    end
-
-    -- 3. 发起后台翻译请求，当前返回原文
-    requestTranslate(processedText, nil)
-    return text
-end
-
--- ========== GUI 处理函数 ==========
+-- 通知函数（与原脚本相同，略作保留）
 local function showNotification(message)
-    pcall(function()
+    local success, result = pcall(function()
         local ScreenGui = Instance.new("ScreenGui")
         ScreenGui.Name = "TranslationNotification"
         ScreenGui.Parent = CoreGui
@@ -331,13 +594,22 @@ local function showNotification(message)
         CloseButton.Text = "关闭"
         CloseButton.TextColor3 = Color3.new(1, 1, 1)
         CloseButton.Parent = Frame
-        CloseButton.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
-        task.delay(CONFIG.NOTIFICATION_DURATION, function()
-            if ScreenGui and ScreenGui.Parent then ScreenGui:Destroy() end
+        CloseButton.MouseButton1Click:Connect(function()
+            ScreenGui:Destroy()
         end)
+        task.delay(CONFIG.NOTIFICATION_DURATION, function()
+            if ScreenGui and ScreenGui.Parent then
+                ScreenGui:Destroy()
+            end
+        end)
+        return ScreenGui
     end)
+    if not success then
+        warn("通知创建失败:", result)
+    end
 end
 
+-- 立即翻译单个GUI元素（同步部分）
 local function translateGuiElementImmediately(gui)
     if TranslatedObjects[gui] then return false end
     local success, originalText = pcall(function() return gui.Text end)
@@ -345,10 +617,12 @@ local function translateGuiElementImmediately(gui)
         TranslatedObjects[gui] = true
         return false
     end
-    local translated = translateText(originalText)
-    if translated ~= originalText then
-        local ok = pcall(function() gui.Text = translated end)
-        if ok then
+    local translatedText = translateText(originalText)
+    if translatedText ~= originalText then
+        local setSuccess = pcall(function()
+            gui.Text = translatedText
+        end)
+        if setSuccess then
             TranslatedObjects[gui] = true
             return true
         end
@@ -357,71 +631,64 @@ local function translateGuiElementImmediately(gui)
     return false
 end
 
--- 带进度条的批量翻译
-local function batchTranslateWithProgress(containers)
-    local allElements = {}
-    for _, container in ipairs(containers) do
-        if container then
-            for _, d in ipairs(container:GetDescendants()) do
-                if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and not TranslatedObjects[d] then
-                    table.insert(allElements, d)
-                end
-            end
+-- 批量立即翻译容器内的所有GUI元素
+local function batchTranslateContainerImmediately(container)
+    if not container then return 0 end
+    local translatedCount = 0
+    local elementsToTranslate = {}
+    local descendants = container:GetDescendants()
+    for _, descendant in ipairs(descendants) do
+        if (descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox")) and not TranslatedObjects[descendant] then
+            table.insert(elementsToTranslate, descendant)
         end
     end
-    local total = #allElements
-    if total == 0 then return 0 end
-    
-    updateProgress(string.format("扫描到 %d 个文本控件，开始翻译...", total), 0)
-    task.wait(0.1)
-    
-    local translatedCount = 0
-    for i = 1, total, CONFIG.BATCH_PROCESS_SIZE do
-        local endIdx = math.min(i + CONFIG.BATCH_PROCESS_SIZE - 1, total)
-        for j = i, endIdx do
-            if translateGuiElementImmediately(allElements[j]) then
+    for i = 1, #elementsToTranslate, CONFIG.BATCH_PROCESS_SIZE do
+        local batchEnd = math.min(i + CONFIG.BATCH_PROCESS_SIZE - 1, #elementsToTranslate)
+        for j = i, batchEnd do
+            if translateGuiElementImmediately(elementsToTranslate[j]) then
                 translatedCount = translatedCount + 1
             end
         end
-        local percent = endIdx / total
-        updateProgress(string.format("翻译控件中: %d / %d", endIdx, total), percent)
-        if endIdx < total then
+        if batchEnd < #elementsToTranslate then
             RunService.Heartbeat:Wait()
         end
     end
     return translatedCount
 end
 
+-- 设置文本变化监听（立即响应）
 local function setupTextChangeListener(gui)
-    if not gui:IsA("TextLabel") and not gui:IsA("TextButton") and not gui:IsA("TextBox") then return end
-    local conn
-    conn = gui:GetPropertyChangedSignal("Text"):Connect(function()
+    if not gui:IsA("TextLabel") and not gui:IsA("TextButton") and not gui:IsA("TextBox") then
+        return
+    end
+    local connection
+    connection = gui:GetPropertyChangedSignal("Text"):Connect(function()
         if not gui or not gui.Parent then
-            if conn then conn:Disconnect() end
+            if connection then connection:Disconnect() end
             return
         end
-        local current = gui.Text
-        if current and current ~= "" then
-            -- 新增：如果已经是中文，不做处理
-            if isChinese(current) then return end
-            local translated = translateText(current)
-            if translated ~= current then
+        local currentText = gui.Text
+        if currentText and currentText ~= "" then
+            local translated = translateText(currentText)
+            if translated ~= currentText then
                 gui.Text = translated
             end
         end
     end)
 end
 
+-- 设置容器监听器（新元素立即翻译）
 local function setupContainerListener(container)
     if not container then return end
-    container.DescendantAdded:Connect(function(child)
-        if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
-            translateGuiElementImmediately(child)
-            setupTextChangeListener(child)
+    container.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+            translateGuiElementImmediately(descendant)
+            setupTextChangeListener(descendant)
         end
     end)
 end
 
+-- 增强的元表劫持（立即生效）
 local function setupEnhancedMetatableHijack()
     return pcall(function()
         local mt = getrawmetatable(game)
@@ -432,10 +699,9 @@ local function setupEnhancedMetatableHijack()
         mt.__newindex = newcclosure(function(t, k, v)
             if (t:IsA("TextLabel") or t:IsA("TextButton") or t:IsA("TextBox")) and k == "Text" then
                 local original = tostring(v)
-                -- 新增：如果已经是中文，跳过翻译
-                if not isChinese(original) then
-                    local translated = translateText(original)
-                    if original ~= translated then v = translated end
+                local translated = translateText(original)
+                if original ~= translated then
+                    v = translated
                 end
             end
             return oldNewIndex(t, k, v)
@@ -445,57 +711,59 @@ local function setupEnhancedMetatableHijack()
     end)
 end
 
+-- 主翻译引擎
 local function setupTranslationEngine()
-    createProgressBar()
-    updateProgress("正在初始化翻译引擎...", 0.1)
-    task.wait(0.1)
-    
-    setupEnhancedMetatableHijack()
-    
-    local containers = { CoreGui }
-    local ok, pg = pcall(function() return LocalPlayer.PlayerGui end)
-    if ok then table.insert(containers, pg) end
+    local totalTranslated = 0
+    local metatableSuccess = setupEnhancedMetatableHijack()
+    local containers = {CoreGui}
+    local success, playerGui = pcall(function() return LocalPlayer.PlayerGui end)
+    if success then table.insert(containers, playerGui) end
     pcall(function() table.insert(containers, StarterGui) end)
     
-    local totalTranslated = batchTranslateWithProgress(containers)
+    for _, container in ipairs(containers) do
+        if container then
+            local count = batchTranslateContainerImmediately(container)
+            totalTranslated = totalTranslated + count
+        end
+    end
     
-    updateProgress("正在设置监听器...", 0.95)
-    for _, c in ipairs(containers) do
-        if c then
-            setupContainerListener(c)
-            for _, d in ipairs(c:GetDescendants()) do
-                if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-                    setupTextChangeListener(d)
+    for _, container in ipairs(containers) do
+        if container then
+            setupContainerListener(container)
+            local descendants = container:GetDescendants()
+            for _, descendant in ipairs(descendants) do
+                if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+                    setupTextChangeListener(descendant)
                 end
             end
         end
     end
     
-    updateProgress("完成！", 1)
-    task.wait(0.3)
-    destroyProgressBar()
-    
+    if not metatableSuccess then
+        warn("元表劫持失败，使用GUI扫描方案")
+    end
     return totalTranslated
 end
 
+-- 主执行流程
 local function main()
     task.wait(CONFIG.TRANSLATE_DELAY)
-    local start = os.clock()
-    local ok, count = pcall(setupTranslationEngine)
-    local elapsed = os.clock() - start
-    if ok then
-        local cacheSize = 0
-        for _ in pairs(ApiCache) do cacheSize = cacheSize + 1 end
-        showNotification(string.format("翻译引擎加载完成（中文保护+API缓存）\n已翻译 %d 个文本元素\n磁盘缓存 %d 条\n耗时: %.2f 秒", count, cacheSize, elapsed))
+    local startTime = os.clock()
+    local success, result = pcall(setupTranslationEngine)
+    local elapsed = os.clock() - startTime
+    if success then
+        local count = result or 0
+        showNotification(string.format("AI 翻译引擎加载完成\n风格：口语化 | 场景：娱乐\n已翻译 %d 个文本元素\n耗时: %.2f 秒", count, elapsed))
         print("=================================")
-        print("翻译引擎加载成功 (已启用中文保护)")
-        print("翻译了", count, "个元素，磁盘缓存", cacheSize, "条")
-        print("耗时", string.format("%.2f", elapsed), "秒")
+        print("AI 翻译引擎加载成功 v1.0")
+        print("翻译风格: 随意口语化 | 场景: 娱乐")
+        print("立即翻译了", count, "个文本元素")
+        print("耗时:", string.format("%.2f", elapsed), "秒")
+        print("未匹配的文本将通过 AI API 自动翻译")
         print("=================================")
     else
-        destroyProgressBar()
-        showNotification("翻译引擎加载失败")
-        warn("加载失败:", count)
+        showNotification("AI 翻译引擎加载失败")
+        warn("AI 翻译引擎加载失败:", result)
     end
 end
 
