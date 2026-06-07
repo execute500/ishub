@@ -45,17 +45,17 @@ local Translations = {
     ["Anti-AFK"] = "反挂机检测",
     ["Anti-Lag"] = "低画质模式",
     ["Anti-Cutscenes"] = "跳过过场动画",
-    ["Door Reach Range"] = "开门范围调节",
+    ["Door Reach Range"] = "开门范围",
     ["Anti-Heartbeat-Minigame"] = "跳过心跳小游戏",
-    ["Anti-Dread"] = "反Dread实体",
-    ["Anti-Screech"] = "反Screech实体",
-    ["Anti-A90"] = "反A-90实体",
-    ["Anti-Eyes"] = "反Eyes实体",
-    ["Anti-Snare"] = "反地刺实体",
+    ["Anti-Dread"] = "反Dread",
+    ["Anti-Screech"] = "反Screech",
+    ["Anti-A90"] = "反A-90",
+    ["Anti-Eyes"] = "反Eyes",
+    ["Anti-Snare"] = "反地刺",
     ["Anti-Blur"] = "反模糊效果",
     ["Anti-Dupe"] = "反假门",
     ["Anti-Figure-Hearing"] = "反Figure听觉",
-    ["Anti-Halt"] = "反Halt实体",
+    ["Anti-Halt"] = "反Halt",
     ["Infinite Items"] = "无限物品",
     ["Infinite Crucifixs"] = "无限十字架",
     ["Infinite Lockpicks / SkeletonKey"] = "无限开锁工具/骷髅钥匙",
@@ -78,10 +78,10 @@ local Translations = {
     ["Notify"] = "通知",
     ["Notify Oxygen"] = "氧气通知",
     ["Client Sided Entities"] = "生成实体（无伤害）",
-    ["Spawn Dread"] = "生成恐惧实体",
-    ["Spawn A90"] = "生成A-90实体",
-    ["Spawn Screech"] = "生成Screech实体",
-    ["Spawn Giltch"] = "生成Glitch实体",
+    ["Spawn Dread"] = "生成Dread",
+    ["Spawn A90"] = "生成A-90",
+    ["Spawn Screech"] = "生成Screech",
+    ["Spawn Giltch"] = "生成Glitch",
     ["Get Items"] = "获取物品",
     ["Crucifix Made By PenguinManiack"] = "十字架由PenguinManiack制作",
     ["Press Q To Activate the Crucifix"] = "按Q激活十字架",
@@ -428,6 +428,7 @@ local function callAITranslateAPI(text, callback)
     if response.Success and response.StatusCode == 200 then
         local decodeSuccess, decoded = pcall(function() return HttpService:JSONDecode(response.Body) end)
         if decodeSuccess and decoded and decoded.data and decoded.data.translated_text then
+            print("AI 翻译成功: " .. text .. " -> " .. decoded.data.translated_text)
             if callback then callback(decoded.data.translated_text, nil) end
             return
         else
