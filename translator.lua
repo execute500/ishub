@@ -7,8 +7,11 @@ local CONFIG = {
     STYLE = "casual",
     CONTEXT = "entertainment",
     PRESERVE_FORMAT = true,
-    API_TIMEOUT = 5,
-    MAX_CONCURRENT = 3
+    API_TIMEOUT = 8,
+    MAX_CONCURRENT = 2,
+    MAX_RETRIES = 3,
+    RETRY_DELAY = 1.5,
+    -- API_KEY = "your_key_here"  -- 如需鉴权请填写
 }
 
 local CoreGui = game:GetService("CoreGui")
@@ -18,77 +21,122 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
--- 本地字典（完整保留，此处省略展示，实际使用时请包含完整字典）
+-- 本地字典（请保留完整内容，此处仅示例结构）
 local Translations = {
+    ["General"] = "主页",
+    ["Player"] = "玩家",
+    -- ... 所有原有条目 ...
+    ["Quietness"] = "Qcumber100汉化",
+    ["HOLD"] = "长按",
+    ["Reach"] = "互动",
+    ["Ignore"] = "忽略",
 }
 
--- 缓存与队列
+-- 状态变量
+local apiDisabled = false
+local consecutiveFails = 0
+local MAX_CONSECUTIVE_FAILS = 5
 local ApiCache, Pending, Queue = {}, {}, {}
 local Active, Timer = 0, nil
 local Translated = setmetatable({}, {__mode = "k"})
 
--- 可见性判断
-local function isElementVisible(element)
-    if not element.Visible then return false end
-    local size = element.AbsoluteSize
-    if size.X <= 0 or size.Y <= 0 then return false end
-    local parent = element.Parent
-    while parent do
-        if parent.Visible == false then return false end
-        parent = parent.Parent
-    end
-    return true
-end
-
--- 更新 UI 中所有匹配原文的可见控件
+-- ========== 安全更新 UI ==========
 local function updateUI(original, translated)
     if not original or not translated then return end
     local containers = {CoreGui}
     local ok, pg = pcall(function() return LocalPlayer.PlayerGui end)
-    if ok then table.insert(containers, pg) end
+    if ok and pg then table.insert(containers, pg) end
     pcall(function() table.insert(containers, StarterGui) end)
 
     for _, c in ipairs(containers) do
-        if c then
-            for _, obj in ipairs(c:GetDescendants()) do
-                if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) 
-                    and obj.Text == original and isElementVisible(obj) then
-                    obj.Text = translated
-                    Translated[obj] = true
+        if c and c.Parent then
+            local success, descendants = pcall(function() return c:GetDescendants() end)
+            if success then
+                for _, obj in ipairs(descendants) do
+                    if obj and obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                        local cur = obj.Text
+                        if cur == original and cur ~= translated then
+                            pcall(function() obj.Text = translated end)
+                            Translated[obj] = true
+                        end
+                    end
                 end
             end
         end
     end
 end
 
--- API 调用（不变）
-local function callAPI(text, cb)
-    if not HttpService then cb(nil, "No HttpService"); return end
-    if not text or text == "" then cb(nil, "Empty"); return end
-    local body, encOk = pcall(HttpService.JSONEncode, HttpService, {
-        text = text, source_lang = "auto", target_lang = CONFIG.TARGET_LANG,
-        style = CONFIG.STYLE, context = CONFIG.CONTEXT, preserve_format = CONFIG.PRESERVE_FORMAT
-    })
-    if not encOk then cb(nil, "JSON error"); return end
-    local ok, res = pcall(HttpService.RequestAsync, HttpService, {
-        Url = CONFIG.API_URL, Method = "POST",
-        Headers = {["Content-Type"] = "application/json"},
-        Body = body, Timeout = CONFIG.API_TIMEOUT
-    })
-    if not ok then cb(nil, "Request failed"); return end
-    if res.Success and res.StatusCode == 200 then
-        local decOk, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
-        if decOk and data and data.data and data.data.translated_text then
-            cb(data.data.translated_text, nil)
+-- ========== API 调用（带重试） ==========
+local function callAPIWithRetry(text, callback, retryCount)
+    retryCount = retryCount or 0
+    if apiDisabled then
+        callback(nil, "API disabled")
+        return
+    end
+    if not HttpService then
+        callback(nil, "No HttpService")
+        return
+    end
+
+    local requestBody = {
+        text = text,
+        source_lang = "auto",
+        target_lang = CONFIG.TARGET_LANG,
+        style = CONFIG.STYLE,
+        context = CONFIG.CONTEXT,
+        preserve_format = CONFIG.PRESERVE_FORMAT
+    }
+    local body, encErr = pcall(HttpService.JSONEncode, HttpService, requestBody)
+    if not encErr then
+        callback(nil, "JSON error")
+        return
+    end
+
+    local headers = {["Content-Type"] = "application/json"}
+    -- if CONFIG.API_KEY then headers["Authorization"] = "Bearer " .. CONFIG.API_KEY end
+
+    local ok, response = pcall(function()
+        return HttpService:RequestAsync({
+            Url = CONFIG.API_URL,
+            Method = "POST",
+            Headers = headers,
+            Body = body,
+            Timeout = CONFIG.API_TIMEOUT
+        })
+    end)
+
+    if not ok then
+        if retryCount < CONFIG.MAX_RETRIES then
+            task.wait(CONFIG.RETRY_DELAY)
+            callAPIWithRetry(text, callback, retryCount+1)
         else
-            cb(nil, "Invalid response")
+            consecutiveFails = consecutiveFails + 1
+            if consecutiveFails >= MAX_CONSECUTIVE_FAILS then apiDisabled = true end
+            callback(nil, "Network error")
         end
+        return
+    end
+
+    if response.Success and response.StatusCode == 200 then
+        local decOk, data = pcall(HttpService.JSONDecode, HttpService, response.Body)
+        if decOk and data and data.data and data.data.translated_text then
+            consecutiveFails = 0
+            callback(data.data.translated_text, nil)
+            return
+        end
+    end
+    -- 非200或解析失败
+    if retryCount < CONFIG.MAX_RETRIES then
+        task.wait(CONFIG.RETRY_DELAY)
+        callAPIWithRetry(text, callback, retryCount+1)
     else
-        cb(nil, "HTTP " .. tostring(res.StatusCode))
+        consecutiveFails = consecutiveFails + 1
+        if consecutiveFails >= MAX_CONSECUTIVE_FAILS then apiDisabled = true end
+        callback(nil, "API error")
     end
 end
 
--- 队列处理（不变）
+-- ========== 请求队列 ==========
 local function processQueue()
     if Timer then return end
     Timer = task.spawn(function()
@@ -96,7 +144,7 @@ local function processQueue()
             local req = table.remove(Queue, 1)
             if req then
                 Active = Active + 1
-                callAPI(req.text, function(translated, err)
+                callAPIWithRetry(req.text, function(translated, err)
                     Active = Active - 1
                     if translated then
                         ApiCache[req.text] = translated
@@ -108,7 +156,6 @@ local function processQueue()
                         end
                         task.spawn(updateUI, req.text, translated)
                     else
-                        warn("[翻译] 失败: ", req.text, " 原因: ", err)
                         if Pending[req.text] then
                             for _, cb in ipairs(Pending[req.text]) do
                                 if cb then pcall(cb, nil) end
@@ -135,7 +182,8 @@ local function requestTranslate(text, callback)
     processQueue()
 end
 
-local function translate(text)
+-- ========== 核心翻译 ==========
+local function translateText(text)
     if type(text) ~= "string" or text == "" then return text end
     local s = text:match("^%s*(.-)%s*$")
     for en, cn in pairs(Translations) do
@@ -149,11 +197,134 @@ local function translate(text)
         end
     end
     if ApiCache[s] then return ApiCache[s] end
-    if HttpService then requestTranslate(s, function() end) end
+    if not apiDisabled and HttpService then
+        requestTranslate(s, function() end)
+    end
     return text
 end
 
-local function notify(msg)
+-- ========== GUI 处理（安全版本） ==========
+local function translateElement(elem)
+    if not elem or Translated[elem] then return false end
+    local ok, orig = pcall(function() return elem.Text end)
+    if not ok or not orig or orig == "" then
+        Translated[elem] = true
+        return false
+    end
+    local trans = translateText(orig)
+    if trans and trans ~= orig then
+        local setOk = pcall(function() elem.Text = trans end)
+        if setOk then
+            Translated[elem] = true
+            return true
+        end
+    end
+    Translated[elem] = true
+    return false
+end
+
+local function scanContainer(container)
+    if not container then return 0 end
+    local list = {}
+    local ok, descendants = pcall(function() return container:GetDescendants() end)
+    if not ok then return 0 end
+    for _, d in ipairs(descendants) do
+        if d and (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and not Translated[d] then
+            table.insert(list, d)
+        end
+    end
+    local count = 0
+    for i = 1, #list, CONFIG.BATCH_PROCESS_SIZE do
+        local e = math.min(i + CONFIG.BATCH_PROCESS_SIZE - 1, #list)
+        for j = i, e do
+            if translateElement(list[j]) then count = count + 1 end
+        end
+        if e < #list then RunService.Heartbeat:Wait() end
+    end
+    return count
+end
+
+local function setupTextListener(elem)
+    if not elem or not (elem:IsA("TextLabel") or elem:IsA("TextButton") or elem:IsA("TextBox")) then return end
+    local conn
+    conn = elem:GetPropertyChangedSignal("Text"):Connect(function()
+        if not elem or not elem.Parent then if conn then conn:Disconnect() end; return end
+        pcall(function()
+            local cur = elem.Text
+            if cur and cur ~= "" then
+                local trans = translateText(cur)
+                if trans and trans ~= cur then
+                    elem.Text = trans
+                end
+            end
+        end)
+    end)
+end
+
+local function setupContainerListener(container)
+    if not container then return end
+    container.DescendantAdded:Connect(function(d)
+        if d and (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) then
+            translateElement(d)
+            setupTextListener(d)
+        end
+    end)
+end
+
+-- 元表劫持（仅拦截 Text 设置，并增加类型校验）
+local function hijackMetatable()
+    local success, mt = pcall(getrawmetatable, game)
+    if not success or not mt then return false end
+    local oldNewIndex = mt.__newindex
+    if not oldNewIndex then return false end
+    local setreadonly_ok, _ = pcall(setreadonly, mt, false)
+    if not setreadonly_ok then return false end
+    mt.__newindex = newcclosure(function(t, k, v)
+        if k == "Text" and (t:IsA("TextLabel") or t:IsA("TextButton") or t:IsA("TextBox")) then
+            local original = tostring(v)
+            local translated = translateText(original)
+            if original ~= translated then
+                v = translated
+            end
+        end
+        return oldNewIndex(t, k, v)
+    end)
+    pcall(setreadonly, mt, true)
+    return true
+end
+
+-- ========== 主引擎 ==========
+local function setupEngine()
+    local total = 0
+    hijackMetatable()
+    local containers = {CoreGui}
+    local ok, pg = pcall(function() return LocalPlayer.PlayerGui end)
+    if ok and pg then table.insert(containers, pg) end
+    pcall(function() table.insert(containers, StarterGui) end)
+
+    for _, c in ipairs(containers) do
+        if c then
+            total = total + scanContainer(c)
+        end
+    end
+    for _, c in ipairs(containers) do
+        if c then
+            setupContainerListener(c)
+            local ok, descendants = pcall(function() return c:GetDescendants() end)
+            if ok then
+                for _, d in ipairs(descendants) do
+                    if d and (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) then
+                        setupTextListener(d)
+                    end
+                end
+            end
+        end
+    end
+    return total
+end
+
+-- ========== 通知 ==========
+local function showNotify(msg)
     pcall(function()
         local gui = Instance.new("ScreenGui")
         gui.Name = "TransNotify"
@@ -189,137 +360,17 @@ local function notify(msg)
     end)
 end
 
--- 翻译单个元素（仅可见）
-local function translateElem(elem)
-    if Translated[elem] then return false end
-    if not isElementVisible(elem) then
-        Translated[elem] = true
-        return false
-    end
-    local ok, orig = pcall(function() return elem.Text end)
-    if not ok or not orig or orig == "" then Translated[elem] = true; return false end
-    local trans = translate(orig)
-    if trans ~= orig then
-        local setOk = pcall(function() elem.Text = trans end)
-        if setOk then Translated[elem] = true; return true end
-    end
-    Translated[elem] = true
-    return false
-end
-
--- 扫描容器（仅可见）
-local function scanContainer(container)
-    if not container then return 0 end
-    local list = {}
-    for _, d in ipairs(container:GetDescendants()) do
-        if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) 
-            and not Translated[d] and isElementVisible(d) then
-            table.insert(list, d)
-        end
-    end
-    local count = 0
-    for i = 1, #list, CONFIG.BATCH_PROCESS_SIZE do
-        local e = math.min(i + CONFIG.BATCH_PROCESS_SIZE - 1, #list)
-        for j = i, e do
-            if translateElem(list[j]) then count = count + 1 end
-        end
-        if e < #list then RunService.Heartbeat:Wait() end
-    end
-    return count
-end
-
--- 监听文本变化（仅可见时处理）
-local function listenTextChange(elem)
-    if not elem:IsA("TextLabel") and not elem:IsA("TextButton") and not elem:IsA("TextBox") then return end
-    local conn
-    conn = elem:GetPropertyChangedSignal("Text"):Connect(function()
-        if not elem or not elem.Parent then if conn then conn:Disconnect() end; return end
-        if not isElementVisible(elem) then return end
-        pcall(function()
-            local cur = elem.Text
-            if cur and cur ~= "" then
-                local trans = translate(cur)
-                if trans ~= cur then elem.Text = trans end
-            end
-        end)
-    end)
-end
-
--- 监听可见性变化（变为可见时立即翻译）
-local function listenVisibilityChange(elem)
-    if not elem:IsA("TextLabel") and not elem:IsA("TextButton") and not elem:IsA("TextBox") then return end
-    elem:GetPropertyChangedSignal("Visible"):Connect(function()
-        if elem.Visible and not Translated[elem] then
-            translateElem(elem)
-        end
-    end)
-end
-
-local function listenContainer(container)
-    if not container then return end
-    container.DescendantAdded:Connect(function(d)
-        if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-            translateElem(d)
-            listenTextChange(d)
-            listenVisibilityChange(d)
-        end
-    end)
-end
-
-local function hijackMetatable()
-    return pcall(function()
-        local mt = getrawmetatable(game)
-        if not mt then return false end
-        local old = mt.__newindex
-        if not old then return false end
-        setreadonly(mt, false)
-        mt.__newindex = newcclosure(function(t, k, v)
-            if (t:IsA("TextLabel") or t:IsA("TextButton") or t:IsA("TextBox")) and k == "Text" then
-                local orig = tostring(v)
-                local trans = translate(orig)
-                if orig ~= trans then v = trans end
-            end
-            return old(t, k, v)
-        end)
-        setreadonly(mt, true)
-        return true
-    end)
-end
-
-local function setup()
-    local total = 0
-    local hijacked = hijackMetatable()
-    local containers = {CoreGui}
-    local ok, pg = pcall(function() return LocalPlayer.PlayerGui end)
-    if ok then table.insert(containers, pg) end
-    pcall(function() table.insert(containers, StarterGui) end)
-
-    for _, c in ipairs(containers) do
-        if c then total = total + scanContainer(c) end
-    end
-    for _, c in ipairs(containers) do
-        if c then
-            listenContainer(c)
-            for _, d in ipairs(c:GetDescendants()) do
-                if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-                    listenTextChange(d)
-                    listenVisibilityChange(d)
-                end
-            end
-        end
-    end
-    if not hijacked then warn("[翻译] 元表劫持失败，使用扫描方案") end
-    return total
-end
-
+-- ========== 启动 ==========
 task.wait(CONFIG.TRANSLATE_DELAY)
-local start = os.clock()
-local ok, cnt = pcall(setup)
-local elapsed = os.clock() - start
-if ok then
-    notify(string.format("AI翻译引擎 已启动（仅显示文本）\n口语化 | 娱乐场景\n翻译 %d 项 | 耗时 %.2f 秒", cnt or 0, elapsed))
-    print(string.format("[翻译] 成功启动 | 仅翻译可见文本 | 共 %d 项 | %.2f 秒", cnt or 0, elapsed))
+local startTime = os.clock()
+local success, result = pcall(setupEngine)
+local elapsed = os.clock() - startTime
+
+if success then
+    local cnt = result or 0
+    showNotify(string.format("AI翻译引擎 已启动\n口语化 | 娱乐场景\n翻译 %d 项 | %.2f 秒", cnt, elapsed))
+    print(string.format("[翻译] 成功启动 | 翻译 %d 项 | %.2f 秒", cnt, elapsed))
 else
-    notify("AI翻译引擎 启动失败: " .. tostring(cnt))
-    warn("[翻译] 启动失败: ", cnt)
+    showNotify("翻译引擎启动失败: " .. tostring(result))
+    warn("[翻译] 启动失败: ", result)
 end
