@@ -11,7 +11,7 @@ local CONFIG = {
     MAX_CONCURRENT = 2,
     MAX_RETRIES = 3,
     RETRY_DELAY = 1.5,
-    -- API_KEY = "your_key_here"  -- 如需鉴权请填写
+    API_KEY = getgenv().api_key  -- 如需鉴权请填写
 }
 
 local CoreGui = game:GetService("CoreGui")
@@ -93,7 +93,7 @@ local function callAPIWithRetry(text, callback, retryCount)
     end
 
     local headers = {["Content-Type"] = "application/json"}
-    -- if CONFIG.API_KEY then headers["Authorization"] = "Bearer " .. CONFIG.API_KEY end
+    if CONFIG.API_KEY then headers["Authorization"] = "Bearer " .. CONFIG.API_KEY end
 
     local ok, response = pcall(function()
         return HttpService:RequestAsync({
